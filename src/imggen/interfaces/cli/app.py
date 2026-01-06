@@ -7,6 +7,7 @@ from .user import user_app
 from .generate import generate_app
 from .gallery import gallery_app
 from .config import config_app
+from .img2img import img2img_app
 
 app = typer.Typer(
     name="imggen",
@@ -20,6 +21,7 @@ console = Console()
 app.add_typer(user_app, name="user", help="User management")
 app.add_typer(generate_app, name="generate", help="Generate images")
 app.add_typer(gallery_app, name="gallery", help="Manage image gallery")
+app.add_typer(img2img_app, name="img2img", help="Image-to-image transformation")
 app.add_typer(config_app, name="config", help="Configuration")
 
 

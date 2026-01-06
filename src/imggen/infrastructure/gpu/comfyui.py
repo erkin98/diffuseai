@@ -212,6 +212,194 @@ class ComfyUIProvider(GPUProvider):
         except Exception as e:
             raise GenerationError(f"ComfyUI generation failed: {e}")
     
+    async def img2img(
+        self,
+        input_image: bytes,
+        prompt: str,
+        strength: float = 0.75,
+        negative_prompt: str = "",
+        steps: int = 25,
+        cfg_scale: float = 7.0,
+        seed: Optional[int] = None,
+    ) -> bytes:
+        """Image-to-image transformation using ComfyUI."""
+        try:
+            from PIL import Image as PILImage
+            import io
+            import base64
+            
+            # Upload input image to ComfyUI
+            img = PILImage.open(io.BytesIO(input_image))
+            width, height = img.size
+            
+            # Save to temp for upload
+            temp_img_data = io.BytesIO()
+            img.save(temp_img_data, format='PNG')
+            temp_img_data.seek(0)
+            
+            # Upload image
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                files = {'image': ('input.png', temp_img_data, 'image/png')}
+                response = await client.post(
+                    f"{self.base_url}/upload/image",
+                    files=files,
+                )
+                response.raise_for_status()
+                upload_result = response.json()
+                uploaded_name = upload_result['name']
+            
+            # Create img2img workflow
+            workflow = self._create_img2img_workflow(
+                uploaded_name,
+                prompt,
+                negative_prompt,
+                strength,
+                steps,
+                cfg_scale,
+                seed,
+            )
+            
+            # Queue and execute (same as generate)
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(
+                    f"{self.base_url}/prompt",
+                    json={
+                        "prompt": workflow,
+                        "client_id": self.client_id,
+                    },
+                )
+                response.raise_for_status()
+                result = response.json()
+                prompt_id = result["prompt_id"]
+            
+            # Wait for completion
+            ws_url = self.base_url.replace("http://", "ws://").replace("https://", "wss://")
+            async with websockets.connect(f"{ws_url}/ws?clientId={self.client_id}") as ws:
+                while True:
+                    message = await ws.recv()
+                    data = json.loads(message)
+                    
+                    if data.get("type") == "executing":
+                        executing_data = data.get("data", {})
+                        if executing_data.get("prompt_id") == prompt_id and executing_data.get("node") is None:
+                            break
+            
+            # Get result
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(f"{self.base_url}/history/{prompt_id}")
+                response.raise_for_status()
+                history = response.json()
+            
+            # Extract output
+            outputs = history[prompt_id]["outputs"]
+            for node_id, node_output in outputs.items():
+                if "images" in node_output:
+                    image_info = node_output["images"][0]
+                    filename = image_info["filename"]
+                    subfolder = image_info.get("subfolder", "")
+                    folder_type = image_info.get("type", "output")
+                    
+                    async with httpx.AsyncClient(timeout=self.timeout) as client:
+                        params = {
+                            "filename": filename,
+                            "subfolder": subfolder,
+                            "type": folder_type,
+                        }
+                        response = await client.get(
+                            f"{self.base_url}/view",
+                            params=params,
+                        )
+                        response.raise_for_status()
+                        return response.content
+            
+            raise GenerationError("No output image found")
+            
+        except Exception as e:
+            raise GenerationError(f"img2img failed: {e}")
+    
+    def _create_img2img_workflow(
+        self,
+        image_name: str,
+        prompt: str,
+        negative_prompt: str,
+        strength: float,
+        steps: int,
+        cfg_scale: float,
+        seed: Optional[int],
+    ) -> Dict[str, Any]:
+        """Create img2img workflow."""
+        if seed is None:
+            seed = random.randint(0, 2**32 - 1)
+        
+        model_config = get_model_by_name(self.model_size)
+        denoise = strength  # strength = denoise in ComfyUI
+        
+        return {
+            "1": {
+                "inputs": {
+                    "ckpt_name": model_config.checkpoint
+                },
+                "class_type": "CheckpointLoaderSimple"
+            },
+            "2": {
+                "inputs": {
+                    "text": prompt,
+                    "clip": ["1", 1]
+                },
+                "class_type": "CLIPTextEncode"
+            },
+            "3": {
+                "inputs": {
+                    "text": negative_prompt,
+                    "clip": ["1", 1]
+                },
+                "class_type": "CLIPTextEncode"
+            },
+            "4": {
+                "inputs": {
+                    "image": image_name,
+                    "upload": "image"
+                },
+                "class_type": "LoadImage"
+            },
+            "5": {
+                "inputs": {
+                    "pixels": ["4", 0],
+                    "vae": ["1", 2]
+                },
+                "class_type": "VAEEncode"
+            },
+            "6": {
+                "inputs": {
+                    "seed": seed,
+                    "steps": steps,
+                    "cfg": cfg_scale,
+                    "sampler_name": "dpmpp_2m",
+                    "scheduler": "karras",
+                    "denoise": denoise,
+                    "model": ["1", 0],
+                    "positive": ["2", 0],
+                    "negative": ["3", 0],
+                    "latent_image": ["5", 0]
+                },
+                "class_type": "KSampler"
+            },
+            "7": {
+                "inputs": {
+                    "samples": ["6", 0],
+                    "vae": ["1", 2]
+                },
+                "class_type": "VAEDecode"
+            },
+            "8": {
+                "inputs": {
+                    "filename_prefix": "img2img",
+                    "images": ["7", 0]
+                },
+                "class_type": "SaveImage"
+            }
+        }
+    
     async def health_check(self) -> bool:
         """Check if ComfyUI is available."""
         try:

@@ -142,6 +142,26 @@ gen-seed PROMPT SEED: _ensure-comfyui _ensure-login
 gen-test:
     uv run imggen generate generate "a red apple on a wooden table, photorealistic" --model small --steps 15
 
+# Transform an image with img2img
+img2img INPUT PROMPT STRENGTH="0.75":
+    uv run imggen img2img transform "{{INPUT}}" "{{PROMPT}}" --strength {{STRENGTH}}
+
+# Restyle a gallery image
+restyle ID STYLE STRENGTH="0.75":
+    uv run imggen img2img restyle {{ID}} "{{STYLE}}" --strength {{STRENGTH}}
+
+# Restyle to Studio Ghibli
+ghibli ID:
+    uv run imggen img2img restyle {{ID}} "Studio Ghibli anime style, soft colors, whimsical, Miyazaki inspired, hand-drawn animation" --strength 0.7
+
+# Restyle to cyberpunk
+cyberpunk ID:
+    uv run imggen img2img restyle {{ID}} "cyberpunk style, neon lights, futuristic, dark atmosphere, blade runner aesthetic" --strength 0.75
+
+# Restyle to watercolor
+watercolor ID:
+    uv run imggen img2img restyle {{ID}} "watercolor painting style, soft edges, artistic, painted texture" --strength 0.6
+
 # ============================================================================
 # Gallery Management
 # ============================================================================

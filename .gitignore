@@ -46,6 +46,16 @@ data/
 # Session files
 .session
 
+# Generated images (examples)
+*.png
+*.jpg
+*.jpeg
+*.gif
+
+# Logs
+*.log
+comfyui.log
+
 # Testing
 .pytest_cache/
 .coverage
