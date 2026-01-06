@@ -1,0 +1,56 @@
+[project]
+name = "imggen"
+version = "0.1.0"
+description = "Secure AI Image Generation with E2E Encryption"
+requires-python = ">=3.11"
+dependencies = [
+    # CLI
+    "typer>=0.12.0",
+    "rich>=13.7.0",
+    
+    # Core
+    "pydantic>=2.6.0",
+    "pydantic-settings>=2.1.0",
+    
+    # Security
+    "argon2-cffi>=23.1.0",
+    "cryptography>=42.0.0",
+    
+    # Database
+    "sqlalchemy>=2.0.0",
+    
+    # HTTP/Async
+    "httpx>=0.27.0",
+    "websockets>=12.0",
+    
+    # Image
+    "pillow>=10.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "ruff>=0.2.0",
+    "mypy>=1.8.0",
+]
+
+[project.scripts]
+imggen = "imggen.interfaces.cli.app:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/imggen"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+
